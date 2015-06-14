@@ -1,0 +1,5 @@
+The files in this folder are for setting up the database on initialization. The folder could be deleted after that
+
+db.spec contains a description of the database. 
+mysql.spec contains a description of how this should be translated to a mysql script
+create_init_db.py takes the two files above as input to create a mysql script. By changing the mysql.spec this could potentially be used to generate scripts for other databases. 

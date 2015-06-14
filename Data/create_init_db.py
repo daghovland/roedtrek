@@ -13,7 +13,7 @@ import re
 # Reads the database model
 # Currently db.spec
 def read_model(name):
-    tables = dict()
+    tables = []
     with open(name, 'r') as file:
         for line in file:
             parts = line.split(':')
@@ -44,7 +44,7 @@ def read_model(name):
                 else:
                     type = words[0]
                     table_spec['TYPE_COLS'].append([words[1],not_null,words[0]])
-            tables[table_name] = table_spec
+            tables.append([table_name, table_spec])
     return tables
                 
 
@@ -68,18 +68,40 @@ def read_engine(name):
 # Creates the init script as a string
 def create_script(model, engine):
     script = ""
-    for table in model.keys():
-        table_script = "{} {} {}\n".format(engine['DROP_TABLE'], table, engine['LINE_TERM'])
-        table_script += "{} {} (".format(engine['CREATE_TABLE'], table) +"\n"
-        for col_desc in model[table]['TYPE_COLS']:
+    qu = engine['QUOTE']
+    for table_spec in model:
+        table_name = table_spec[0]
+        script = "{} {}{}{} {}\n".format(engine['DROP_TABLE'], qu, table_name, qu, engine['LINE_TERM']) + script
+    for table_spec in model:
+        table_name = table_spec[0]
+        table = table_spec[1]
+        table_script = "{} {}{}{} (".format(engine['CREATE_TABLE'], qu, table_name, qu) +"\n"
+        table_script += "\t{}{}{} {} {} {},\n".format(qu, engine['PRIMARY_KEY_NAME'], qu, engine['PRIMARY_KEY_TYPE'], engine['NOT_NULL'], engine['AUTO_INC'])
+        for col_desc in table['TYPE_COLS']:
             col_name = col_desc[0]
             not_null = col_desc[1]
-            table_script += "\t{} {}".format(col_name, engine['STRING_TYPE'])
+            table_script += "\t{}{}{} {}".format(qu, col_name, qu, engine['STRING_TYPE'])
             if not_null:
-                table_script += " {} ".format(engine['NOT_NULL'])
+                table_script += " {}".format(engine['NOT_NULL'])
             table_script += ",\n"
-        table_script += "\t{} {},\n".format(engine['PRIMARY_KEY_NAME'], engine['PRIMARY_KEY_TYPE'])
-        table_script += "\t{} \n".format(engine['PRIMARY_KEY_DECL'])
+        for fkey in table['FOREIGN_KEYS']:
+            ref_table = fkey[0][0]
+            not_null = fkey[1]
+            if len(fkey[0]) == 2:
+                col_name = fkey[0][1]
+            elif len(fkey[0]) == 1:
+                col_name = "{}_id".format(ref_table[:-1])
+            else:
+                print("Error in stored representation of foreign key {}.{}\n".format(table,ref_table))
+                exit()
+            table_script += "\t{0}{1}{0} {2} ".format(qu, col_name, engine['PRIMARY_KEY_TYPE'])
+            if not_null:
+                table_script += engine['NOT_NULL']
+            table_script += ",\n"
+            table_script += "\tFOREIGN KEY ({0}{1}{0}) REFERENCES {0}{2}{0}({0}{3}{0}),\n".format(qu, col_name, ref_table, engine['PRIMARY_KEY_NAME'])
+        for c in ['created', 'modified']:
+            table_script += "\t{0}{1}{0} {2},\n".format(qu, c, engine['DATETIME_TYPE'])
+        table_script += "\t{1} ({0}{2}{0}) \n".format(qu, engine['PRIMARY_KEY_DECL'], engine['PRIMARY_KEY_NAME'])
         table_script += ")" + engine['TABLE_SUFFIX'] + engine['LINE_TERM'] + "\n"
         script += table_script + "\n"
     return script
